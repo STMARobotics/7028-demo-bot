@@ -17,7 +17,8 @@ public class DriveSubsystem extends SubsystemBase {
     private final DcMotorEx right1;
     private final DcMotorEx right2;
     private final IMU imu;
-    
+    private double headingOffset = 0.0;
+
     public DriveSubsystem(Robot hardwareMap) {
         /**
          * Initialize the motors
@@ -35,6 +36,8 @@ public class DriveSubsystem extends SubsystemBase {
         RevHubOrientationOnRobot.UsbFacingDirection usbDirection = RevHubOrientationOnRobot.UsbFacingDirection.RIGHT;
         RevHubOrientationOnRobot orientationOnRobot = new RevHubOrientationOnRobot(logoDirection, usbDirection);
         imu.initialize(new IMU.Parameters(orientationOnRobot));
+        resetIMU();
+
 
         /**
          * Set the direction of the motors
@@ -94,19 +97,36 @@ public class DriveSubsystem extends SubsystemBase {
     }
 
     /**
-     * Resets the IMU's yaw angle to 0.
+     * Resets the IMU's yaw angle to make the current orientation the new zero.
      */
     public void resetIMU() {
+        headingOffset = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
         imu.resetYaw();
     }
 
     /**
-     * Gets the robot's current heading in degrees.
-     * @return The current heading in degrees.
+     * Gets the robot's current heading in degrees, adjusted by the last reset.
+     * @return The current heading in degrees (-180 to 180).
      */
     public double getHeading() {
-        // Changed to DEGREES
-        return imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+        double currentYaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+        double adjustedYaw = currentYaw - headingOffset;
+        return normalizeAngle(adjustedYaw);
+    }
+
+    /**
+     * Normalizes an angle to be within the range of -180 to 180 degrees.
+     * @param angle The angle in degrees.
+     * @return The normalized angle.
+     */
+    private double normalizeAngle(double angle) {
+        while (angle > 180) {
+            angle -= 360;
+        }
+        while (angle <= -180) {
+            angle += 360;
+        }
+        return angle;
     }
 
     /**
@@ -149,8 +169,7 @@ public class DriveSubsystem extends SubsystemBase {
         // double currentHeadingDegrees = getHeading(); // This will now correctly be in degrees
         // double error = targetHeadingDegrees - currentHeadingDegrees;
         // // Normalize error to be within -180 to 180
-        // while (error > 180) error -= 360;
-        // while (error < -180) error += 360;
+        // error = normalizeAngle(error); // Use the helper
         //
         // double kP = 0.01; // Proportional gain, needs tuning
         // double turnSpeed = error * kP;
@@ -172,25 +191,19 @@ public class DriveSubsystem extends SubsystemBase {
         double right1VelocityTicksPerSec = right1.getVelocity();
         double right2VelocityTicksPerSec = right2.getVelocity();
 
-        // Calculate velocity
         double avgAbsoluteTicksPerSecond = (Math.abs(left1VelocityTicksPerSec) +
                                             Math.abs(left2VelocityTicksPerSec) +
                                             Math.abs(right1VelocityTicksPerSec) +
                                             Math.abs(right2VelocityTicksPerSec)) / 4.0;
 
-        // Convert tps to rps
         double avgWheelRps = avgAbsoluteTicksPerSecond / Constants.DriveConstants.TICKS_PER_REVOLUTION;
 
-        // Calculate diameter
         double wheelCircumferenceMm = Math.PI * Constants.DriveConstants.WHEEL_DIAMETER_MM;
 
-        // Calculate speed in millimeters per second
         double speedMmPerSecond = avgWheelRps * wheelCircumferenceMm;
 
-        // Convert to meters per second
         double speedMetersPerSecond = speedMmPerSecond * Constants.DriveConstants.MM_TO_METERS;
 
-        // Convert to miles per hour
         double speedMph = speedMetersPerSecond * Constants.DriveConstants.METERS_TO_MILES / Constants.DriveConstants.SECONDS_TO_HOURS;
         
         return speedMph;
